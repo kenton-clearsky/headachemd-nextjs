@@ -54,6 +54,8 @@ src/
 
 ## 🚀 Getting Started
 
+> **Development Branch**: This repository uses `development` for active development and `master` for stable releases.
+
 ### Prerequisites
 - Node.js 18+ 
 - npm or yarn
