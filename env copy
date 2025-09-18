@@ -1,0 +1,54 @@
+# Development Environment Configuration
+NODE_ENV=production
+# Application URLs
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:3000/api
+# Firebase Configuration (Public - for client-side)
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyCRJHNyiW8NMqa1DEmEsOouA7lIfFwd9XM
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=headachemd.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=headachemd
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=headachemd.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=109987892469
+NEXT_PUBLIC_FIREBASE_APP_ID=1:109987892469:web:48875d9a9a65383ff289bc
+# Firebase Admin (Server-side)
+FIREBASE_ADMIN_PROJECT_ID=headachemd
+FIREBASE_ADMIN_CLIENT_EMAIL=firebase-adminsdk@headachemd.iam.gserviceaccount.com
+FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKB\n-----END PRIVATE KEY-----\n"
+# Google Cloud Configuration
+GOOGLE_CLOUD_PROJECT_ID=headachemd
+GOOGLE_CLOUD_REGION=us-central1
+# Authentication & Security
+NEXTAUTH_SECRET=local-development-secret-key-change-in-production
+NEXTAUTH_URL=http://localhost:3000
+ENCRYPTION_KEY=123456789012345678901234567890AW
+AUDIT_LOG_LEVEL=debug
+AUDIT_LOG_RETENTION_DAYS=30
+# Development Features - ENABLED FOR DEV
+NEXT_PUBLIC_USE_FIREBASE_EMULATORS=false
+NEXT_PUBLIC_FORCE_REAL_AUTH=false
+NEXT_PUBLIC_ENABLE_DEV_MODE=true
+NEXT_PUBLIC_SKIP_AUTH_IN_DEV=false
+ENABLE_DEBUG_LOGGING=true
+SKIP_EMAIL_VERIFICATION=true
+# EMR Integration (Demo/Mock)
+EMR_EPIC_CLIENT_ID=demo-epic-client-id
+EMR_EPIC_CLIENT_SECRET=demo-epic-client-secret
+EMR_EPIC_SANDBOX_URL=https://fhir.epic.com/interconnect-fhir-oauth
+EMR_CERNER_CLIENT_ID=demo-cerner-client-id
+EMR_CERNER_CLIENT_SECRET=demo-cerner-client-secret
+EMR_CERNER_SANDBOX_URL=https://fhir-ehr-code.cerner.com/dstu2
+# Rate Limiting (Relaxed for development)
+RATE_LIMIT_MAX_REQUESTS=1000
+RATE_LIMIT_WINDOW_MS=900000
+# Session Configuration (Extended for development)
+SESSION_TIMEOUT_MINUTES=120
+SESSION_REFRESH_THRESHOLD_MINUTES=30
+# Application Settings
+NEXT_PUBLIC_APP_NAME=HeadacheMD (Dev)
+NEXT_PUBLIC_APP_VERSION=1.0.0-dev
+NEXT_PUBLIC_SUPPORT_EMAIL=dev-support@headachemd.org
+NEXT_PUBLIC_INFO_EMAIL=dev-info@headachemd.org
+
+NEXT_EMR_CLIENT_ID=ajuwN0Gs3bbFrhuCN9-K8SiOd9V-sytBU1gTJSMuTow
+NEXT_EMR_CLIENT_SECRET=D01JSDzC5K2k1Zr2AJP4tuUlkZbYabMu3cDWO8X1cIt6wF9QPAu38OI34qv0Fk6x
+

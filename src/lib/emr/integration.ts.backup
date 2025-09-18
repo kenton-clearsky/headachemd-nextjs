@@ -1,0 +1,570 @@
+import { EMRSystem, EMRSession, EMRAuthRequest } from '@/types/auth';
+import {
+  logAuditEvent,
+  AuditAction,
+  AuditResource,
+  RiskLevel,
+  AccessMethod,
+} from '@/lib/hipaa/audit';
+import { encryptPHI, decryptPHI } from '@/lib/hipaa/encryption';
+import { db } from '@/lib/firebase/config';
+import { doc, setDoc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
+
+export interface EMRConfig {
+  system: EMRSystem;
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  authUrl: string;
+  tokenUrl: string;
+  apiBaseUrl: string;
+  scopes: string[];
+}
+
+export interface EMRPatientData {
+  patientId: string;
+  mrn: string;
+  demographics: {
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    gender: string;
+    phone: string;
+    email: string;
+    address: {
+      street: string;
+      city: string;
+      state: string;
+      zipCode: string;
+    };
+  };
+  medicalHistory: {
+    allergies: string[];
+    medications: Array<{
+      name: string;
+      dosage: string;
+      frequency: string;
+      startDate: string;
+      isActive: boolean;
+    }>;
+    conditions: string[];
+  };
+  appointments: Array<{
+    id: string;
+    scheduledAt: string;
+    type: string;
+    provider: string;
+    status: string;
+  }>;
+}
+
+export class EMRIntegrationService {
+  private static instance: EMRIntegrationService;
+  private configs: Map<EMRSystem, EMRConfig>;
+
+  private constructor() {
+    this.configs = new Map();
+    this.initializeConfigs();
+  }
+
+  public static getInstance(): EMRIntegrationService {
+    if (!EMRIntegrationService.instance) {
+      EMRIntegrationService.instance = new EMRIntegrationService();
+    }
+    return EMRIntegrationService.instance;
+  }
+
+  private initializeConfigs(): void {
+    // Epic EMR Configuration
+    this.configs.set(EMRSystem.EPIC, {
+      system: EMRSystem.EPIC,
+      clientId: process.env.EPIC_CLIENT_ID || '',
+      clientSecret: process.env.EPIC_CLIENT_SECRET || '',
+      redirectUri: `${process.env.NEXT_PUBLIC_APP_URL}/api/emr/callback/epic`,
+      authUrl: 'https://fhir.epic.com/interconnect-fhir-oauth/oauth2/authorize',
+      tokenUrl: 'https://fhir.epic.com/interconnect-fhir-oauth/oauth2/token',
+      apiBaseUrl: 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4',
+      scopes: ['patient/*.read', 'launch/patient', 'offline_access'],
+    });
+
+    // Cerner EMR Configuration
+    this.configs.set(EMRSystem.CERNER, {
+      system: EMRSystem.CERNER,
+      clientId: process.env.CERNER_CLIENT_ID || '',
+      clientSecret: process.env.CERNER_CLIENT_SECRET || '',
+      redirectUri: `${process.env.NEXT_PUBLIC_APP_URL}/api/emr/callback/cerner`,
+      authUrl:
+        'https://authorization.cerner.com/tenants/oauth2/protocol/oauth2/authorize',
+      tokenUrl:
+        'https://authorization.cerner.com/tenants/oauth2/protocol/oauth2/token',
+      apiBaseUrl:
+        'https://fhir-ehr.cerner.com/r4/ec2458f2-1e24-41c8-b71b-0e701af7583d',
+      scopes: ['patient/*.read', 'launch/patient', 'offline_access'],
+    });
+
+    // Allscripts EMR Configuration
+    this.configs.set(EMRSystem.ALLSCRIPTS, {
+      system: EMRSystem.ALLSCRIPTS,
+      clientId: process.env.ALLSCRIPTS_CLIENT_ID || '',
+      clientSecret: process.env.ALLSCRIPTS_CLIENT_SECRET || '',
+      redirectUri: `${process.env.NEXT_PUBLIC_APP_URL}/api/emr/callback/allscripts`,
+      authUrl: 'https://open.allscripts.com/fhir/r4/oauth2/authorize',
+      tokenUrl: 'https://open.allscripts.com/fhir/r4/oauth2/token',
+      apiBaseUrl: 'https://open.allscripts.com/fhir/r4',
+      scopes: ['patient/*.read', 'launch/patient', 'offline_access'],
+    });
+  }
+
+  /**
+   * Generate OAuth2 authorization URL for EMR system
+   */
+  async generateAuthUrl(
+    system: EMRSystem,
+    userId: string,
+    patientContext?: string
+  ): Promise<string> {
+    const config = this.configs.get(system);
+    if (!config) {
+      throw new Error(`EMR system ${system} not configured`);
+    }
+
+    const state = this.generateState(userId, system);
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: config.clientId,
+      redirect_uri: config.redirectUri,
+      scope: config.scopes.join(' '),
+      state,
+      launch: patientContext || '',
+      aud: config.apiBaseUrl,
+    });
+
+    // Log auth URL generation
+    await logAuditEvent({
+      userId,
+      action: AuditAction.ACCESS,
+      resource: AuditResource.EMR_AUTH,
+      details: {
+        description: `EMR auth URL generated for ${system}`,
+        accessMethod: AccessMethod.WEB_BROWSER,
+        emrSystem: system,
+        patientContext,
+      },
+      ipAddress: 'system',
+      userAgent: 'system',
+      sessionId: await this.generateSessionId(),
+      success: true,
+      riskLevel: RiskLevel.LOW,
+    });
+
+    return `${config.authUrl}?${params.toString()}`;
+  }
+
+  /**
+   * Exchange authorization code for access token
+   */
+  async exchangeCodeForToken(
+    system: EMRSystem,
+    code: string,
+    state: string
+  ): Promise<EMRSession> {
+    const config = this.configs.get(system);
+    if (!config) {
+      throw new Error(`EMR system ${system} not configured`);
+    }
+
+    const { userId } = this.parseState(state);
+
+    try {
+      const response = await fetch(config.tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: config.redirectUri,
+          client_id: config.clientId,
+          client_secret: config.clientSecret,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Token exchange failed: ${response.statusText}`);
+      }
+
+      const tokenData = await response.json();
+
+      const session: EMRSession = {
+        system,
+        accessToken: encryptPHI(tokenData.access_token),
+        refreshToken: tokenData.refresh_token
+          ? encryptPHI(tokenData.refresh_token)
+          : undefined,
+        expiresAt: new Date(Date.now() + tokenData.expires_in * 1000),
+        patientContext: tokenData.patient || undefined,
+      };
+
+      // Save session to database
+      await this.saveEMRSession(userId, session);
+
+      // Log successful token exchange
+      await logAuditEvent({
+        userId,
+        action: AuditAction.ACCESS,
+        resource: AuditResource.EMR_AUTH,
+        details: {
+          description: `EMR token exchange successful for ${system}`,
+          accessMethod: AccessMethod.WEB_BROWSER,
+          emrSystem: system,
+        },
+        ipAddress: 'system',
+        userAgent: 'system',
+        sessionId: await this.generateSessionId(),
+        success: true,
+        riskLevel: RiskLevel.LOW,
+      });
+
+      return session;
+    } catch (error) {
+      // Log failed token exchange
+      await logAuditEvent({
+        userId,
+        action: AuditAction.ACCESS_FAILED,
+        resource: AuditResource.EMR_AUTH,
+        details: {
+          description: `EMR token exchange failed for ${system}`,
+          accessMethod: AccessMethod.WEB_BROWSER,
+          emrSystem: system,
+          error: (error as Error).message,
+        },
+        ipAddress: 'system',
+        userAgent: 'system',
+        sessionId: await this.generateSessionId(),
+        success: false,
+        riskLevel: RiskLevel.MEDIUM,
+        errorMessage: (error as Error).message,
+      });
+
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch patient data from EMR system
+   */
+  async fetchPatientData(
+    userId: string,
+    system: EMRSystem,
+    patientId: string
+  ): Promise<EMRPatientData> {
+    const session = await this.getEMRSession(userId, system);
+    if (!session) {
+      throw new Error('No active EMR session found');
+    }
+
+    const config = this.configs.get(system);
+    if (!config) {
+      throw new Error(`EMR system ${system} not configured`);
+    }
+
+    try {
+      const accessToken = decryptPHI(session.accessToken);
+
+      // Fetch patient demographics
+      const demographicsResponse = await fetch(
+        `${config.apiBaseUrl}/Patient/${patientId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/fhir+json',
+          },
+        }
+      );
+
+      if (!demographicsResponse.ok) {
+        throw new Error(
+          `Failed to fetch patient demographics: ${demographicsResponse.statusText}`
+        );
+      }
+
+      const patientData = await demographicsResponse.json();
+
+      // Fetch medications
+      const medicationsResponse = await fetch(
+        `${config.apiBaseUrl}/MedicationRequest?patient=${patientId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/fhir+json',
+          },
+        }
+      );
+
+      const medicationsData = medicationsResponse.ok
+        ? await medicationsResponse.json()
+        : { entry: [] };
+
+      // Fetch appointments
+      const appointmentsResponse = await fetch(
+        `${config.apiBaseUrl}/Appointment?patient=${patientId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/fhir+json',
+          },
+        }
+      );
+
+      const appointmentsData = appointmentsResponse.ok
+        ? await appointmentsResponse.json()
+        : { entry: [] };
+
+      // Transform FHIR data to our format
+      const transformedData: EMRPatientData = {
+        patientId,
+        mrn: patientData.identifier?.[0]?.value || '',
+        demographics: {
+          firstName: patientData.name?.[0]?.given?.[0] || '',
+          lastName: patientData.name?.[0]?.family || '',
+          dateOfBirth: patientData.birthDate || '',
+          gender: patientData.gender || '',
+          phone:
+            patientData.telecom?.find(
+              (t: Record<string, unknown>) => t.system === 'phone'
+            )?.value || '',
+          email:
+            patientData.telecom?.find(
+              (t: Record<string, unknown>) => t.system === 'email'
+            )?.value || '',
+          address: {
+            street: patientData.address?.[0]?.line?.[0] || '',
+            city: patientData.address?.[0]?.city || '',
+            state: patientData.address?.[0]?.state || '',
+            zipCode: patientData.address?.[0]?.postalCode || '',
+          },
+        },
+        medicalHistory: {
+          allergies: [], // Would need separate allergy endpoint
+          medications:
+            medicationsData.entry?.map((entry: Record<string, unknown>) => {
+              const resource = entry.resource as Record<string, unknown>;
+              const medicationConcept = resource.medicationCodeableConcept as Record<string, unknown> | undefined;
+              const dosageInstructions = resource.dosageInstruction as Record<string, unknown>[] | undefined;
+              const firstDosage = dosageInstructions?.[0] as Record<string, unknown> | undefined;
+              const timing = firstDosage?.timing as Record<string, unknown> | undefined;
+              const repeat = timing?.repeat as Record<string, unknown> | undefined;
+              
+              return {
+                name: medicationConcept?.text as string || '',
+                dosage: firstDosage?.text as string || '',
+                frequency: repeat?.frequency as string || '',
+                startDate: resource.authoredOn as string || '',
+                isActive: resource.status === 'active',
+                code: resource.code as string || '',
+              };
+            }) || [],
+          conditions: [], // Would need separate conditions endpoint
+        },
+        appointments:
+          appointmentsData.entry?.map((entry: Record<string, unknown>) => {
+            const resource = entry.resource as Record<string, unknown>;
+            return {
+              id: resource.id,
+              scheduledAt: resource.start || '',
+              type: (resource.serviceType as Record<string, unknown>[])?.[0]?.text as string || '',
+              provider:
+                ((resource.participant as Record<string, unknown>[])?.find(
+                  (p: Record<string, unknown>) =>
+                    (p.actor as Record<string, unknown>)?.reference?.toString().includes('Practitioner')
+                )?.actor as Record<string, unknown>)?.display as string || '',
+              status: resource.status,
+            };
+          }) || [],
+      };
+
+      // Log successful data fetch
+      await logAuditEvent({
+        userId,
+        action: AuditAction.READ,
+        resource: AuditResource.EMR_DATA,
+        resourceId: patientId,
+        details: {
+          description: `Patient data fetched from ${system}`,
+          accessMethod: AccessMethod.WEB_BROWSER,
+          emrSystem: system,
+          dataTypes: ['demographics', 'medications', 'appointments'],
+        },
+        ipAddress: 'system',
+        userAgent: 'system',
+        sessionId: await this.generateSessionId(),
+        success: true,
+        riskLevel: RiskLevel.LOW,
+      });
+
+      return transformedData;
+    } catch (error) {
+      // Log failed data fetch
+      await logAuditEvent({
+        userId,
+        action: AuditAction.READ_FAILED,
+        resource: AuditResource.EMR_DATA,
+        resourceId: patientId,
+        details: {
+          description: `Failed to fetch patient data from ${system}`,
+          accessMethod: AccessMethod.WEB_BROWSER,
+          emrSystem: system,
+          error: (error as Error).message,
+        },
+        ipAddress: 'system',
+        userAgent: 'system',
+        sessionId: await this.generateSessionId(),
+        success: false,
+        riskLevel: RiskLevel.MEDIUM,
+        errorMessage: (error as Error).message,
+      });
+
+      throw error;
+    }
+  }
+
+  /**
+   * Refresh EMR access token
+   */
+  async refreshToken(userId: string, system: EMRSystem): Promise<EMRSession> {
+    const session = await this.getEMRSession(userId, system);
+    if (!session?.refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const config = this.configs.get(system);
+    if (!config) {
+      throw new Error(`EMR system ${system} not configured`);
+    }
+
+    try {
+      const refreshToken = decryptPHI(session.refreshToken);
+
+      const response = await fetch(config.tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+          client_id: config.clientId,
+          client_secret: config.clientSecret,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Token refresh failed: ${response.statusText}`);
+      }
+
+      const tokenData = await response.json();
+
+      const updatedSession: EMRSession = {
+        ...session,
+        accessToken: encryptPHI(tokenData.access_token),
+        refreshToken: tokenData.refresh_token
+          ? encryptPHI(tokenData.refresh_token)
+          : session.refreshToken,
+        expiresAt: new Date(Date.now() + tokenData.expires_in * 1000),
+      };
+
+      // Update session in database
+      await this.saveEMRSession(userId, updatedSession);
+
+      return updatedSession;
+    } catch (error) {
+      throw new Error(`Token refresh failed: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Save EMR session to database
+   */
+  private async saveEMRSession(
+    userId: string,
+    session: EMRSession
+  ): Promise<void> {
+    await setDoc(doc(db, 'emr_sessions', `${userId}_${session.system}`), {
+      userId,
+      system: session.system,
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
+      expiresAt: Timestamp.fromDate(session.expiresAt),
+      patientContext: session.patientContext,
+      createdAt: Timestamp.fromDate(new Date()),
+      updatedAt: Timestamp.fromDate(new Date()),
+    });
+  }
+
+  /**
+   * Get EMR session from database
+   */
+  private async getEMRSession(
+    userId: string,
+    system: EMRSystem
+  ): Promise<EMRSession | null> {
+    const sessionDoc = await getDoc(
+      doc(db, 'emr_sessions', `${userId}_${system}`)
+    );
+
+    if (!sessionDoc.exists()) {
+      return null;
+    }
+
+    const data = sessionDoc.data();
+    return {
+      system: data.system,
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      expiresAt: data.expiresAt.toDate(),
+      patientContext: data.patientContext,
+    };
+  }
+
+  /**
+   * Generate state parameter for OAuth2
+   */
+  private generateState(userId: string, system: EMRSystem): string {
+    const stateData = {
+      userId,
+      system,
+      timestamp: Date.now(),
+      nonce: Math.random().toString(36).substring(2),
+    };
+
+    return Buffer.from(JSON.stringify(stateData)).toString('base64');
+  }
+
+  /**
+   * Parse state parameter from OAuth2 callback
+   */
+  private parseState(state: string): { userId: string; system: EMRSystem } {
+    try {
+      const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
+      return {
+        userId: stateData.userId,
+        system: stateData.system,
+      };
+    } catch (error) {
+      throw new Error('Invalid state parameter');
+    }
+  }
+
+  /**
+   * Generate session ID for audit logging
+   */
+  private async generateSessionId(): Promise<string> {
+    const timestamp = Date.now().toString();
+    const random = Math.random().toString(36).substring(2);
+    return `${timestamp}_${random}`;
+  }
+}
+
+// Export singleton instance
+export const emrIntegrationService = EMRIntegrationService.getInstance();

@@ -1,0 +1,134 @@
+steps:
+  # Install dependencies
+  - name: 'node:20'
+    entrypoint: 'npm'
+    args: ['ci']
+
+  # # Run tests (when available)
+  # - name: 'node:18'
+  #   entrypoint: 'npm'
+  #   args: ['run', 'test:ci']
+  #   env:
+  #     - 'CI=true'
+
+  # Build the application
+  - name: 'node:20'
+    entrypoint: 'npm'
+    args: ['run', 'build']
+    env:
+      - 'NODE_ENV=production'
+      - 'NEXT_PUBLIC_FIREBASE_API_KEY=${_FIREBASE_API_KEY}'
+      - 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_FIREBASE_AUTH_DOMAIN}'
+      - 'NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_FIREBASE_PROJECT_ID}'
+      - 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${_FIREBASE_STORAGE_BUCKET}'
+      - 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${_FIREBASE_MESSAGING_SENDER_ID}'
+      - 'NEXT_PUBLIC_FIREBASE_APP_ID=${_FIREBASE_APP_ID}'
+      - 'FIREBASE_ADMIN_PROJECT_ID=${_FIREBASE_PROJECT_ID}'
+      - 'FIREBASE_ADMIN_CLIENT_EMAIL=${_FIREBASE_ADMIN_CLIENT_EMAIL}'
+      - 'FIREBASE_ADMIN_PRIVATE_KEY=${_FIREBASE_ADMIN_PRIVATE_KEY}'
+      - 'NEXTAUTH_SECRET=${_NEXTAUTH_SECRET}'
+      - 'NEXTAUTH_URL=${_NEXTAUTH_URL}'
+      - 'ENCRYPTION_KEY=${_ENCRYPTION_KEY}'
+      - 'GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID'
+      - 'GOOGLE_CLOUD_REGION=${_REGION}'
+      - 'NEXT_PUBLIC_APP_URL=${_NEXTAUTH_URL}'
+      - 'NEXT_PUBLIC_API_URL=${_NEXTAUTH_URL}/api'
+      # EMR Integration Environment Variables
+      - 'ECLINICALWORKS_CLIENT_ID=${_ECLINICALWORKS_CLIENT_ID}'
+      - 'ECLINICALWORKS_CLIENT_SECRET=${_ECLINICALWORKS_CLIENT_SECRET}'
+      - 'ECLINICALWORKS_REDIRECT_URI=${_ECLINICALWORKS_REDIRECT_URI}'
+      - 'ECLINICALWORKS_AUTH_URL=${_ECLINICALWORKS_AUTH_URL}'
+      - 'ECLINICALWORKS_TOKEN_URL=${_ECLINICALWORKS_TOKEN_URL}'
+      - 'ECLINICALWORKS_FHIR_BASE_URL=${_ECLINICALWORKS_FHIR_BASE_URL}'
+      - 'ECLINICALWORKS_PRACTICE_CODE=${_ECLINICALWORKS_PRACTICE_CODE}'
+      - 'EMR_ECLINICALWORKS_CLIENT_ID=${_ECLINICALWORKS_CLIENT_ID}'
+      - 'EMR_ECLINICALWORKS_CLIENT_SECRET=${_ECLINICALWORKS_CLIENT_SECRET}'
+
+  # Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/headachemd-nextjs:latest'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/headachemd-nextjs:${BUILD_ID}'
+      - '.'
+
+  # Push Docker image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/headachemd-nextjs:latest'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/headachemd-nextjs:${BUILD_ID}'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'headachemd-nextjs'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/headachemd-nextjs:latest'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '3000'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--max-instances'
+      - '100'
+      - '--min-instances'
+      - '1'
+      - '--concurrency'
+      - '80'
+      - '--timeout'
+      - '300'
+      - '--set-env-vars'
+      - 'NODE_ENV=production,FIREBASE_ADMIN_PROJECT_ID=${_FIREBASE_PROJECT_ID},FIREBASE_ADMIN_CLIENT_EMAIL=${_FIREBASE_ADMIN_CLIENT_EMAIL},FIREBASE_ADMIN_PRIVATE_KEY=${_FIREBASE_ADMIN_PRIVATE_KEY},NEXTAUTH_SECRET=${_NEXTAUTH_SECRET},NEXTAUTH_URL=${_NEXTAUTH_URL},ENCRYPTION_KEY=${_ENCRYPTION_KEY},GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,GOOGLE_CLOUD_REGION=${_REGION},NEXT_PUBLIC_APP_URL=${_NEXTAUTH_URL},NEXT_PUBLIC_API_URL=${_NEXTAUTH_URL}/api,ECLINICALWORKS_CLIENT_ID=${_ECLINICALWORKS_CLIENT_ID},ECLINICALWORKS_CLIENT_SECRET=${_ECLINICALWORKS_CLIENT_SECRET},ECLINICALWORKS_REDIRECT_URI=${_ECLINICALWORKS_REDIRECT_URI},ECLINICALWORKS_AUTH_URL=${_ECLINICALWORKS_AUTH_URL},ECLINICALWORKS_TOKEN_URL=${_ECLINICALWORKS_TOKEN_URL},ECLINICALWORKS_FHIR_BASE_URL=${_ECLINICALWORKS_FHIR_BASE_URL},ECLINICALWORKS_PRACTICE_CODE=${_ECLINICALWORKS_PRACTICE_CODE},EMR_ECLINICALWORKS_CLIENT_ID=${_ECLINICALWORKS_CLIENT_ID},EMR_ECLINICALWORKS_CLIENT_SECRET=${_ECLINICALWORKS_CLIENT_SECRET}'
+
+# Timeout for the entire build
+timeout: '1200s'
+
+# Substitutions for environment variables
+substitutions:
+  _REGION: 'us-central1'
+  _FIREBASE_API_KEY: 'AIzaSyCRJHNyiW8NMqa1DEmEsOouA7lIfFwd9XM'
+  _FIREBASE_AUTH_DOMAIN: 'headachemd.firebaseapp.com'
+  _FIREBASE_PROJECT_ID: 'headachemd'
+  _FIREBASE_STORAGE_BUCKET: 'headachemd.firebasestorage.app'
+  _FIREBASE_MESSAGING_SENDER_ID: '109987892469'
+  _FIREBASE_APP_ID: '1:109987892469:web:48875d9a9d65383ff289bc'
+  _FIREBASE_ADMIN_CLIENT_EMAIL: 'firebase-adminsdk@headachemd.iam.gserviceaccount.com'
+  _FIREBASE_ADMIN_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKB\nvVX9ykK/8y4rBEB4UNcwV+2qAzLxuVUiP60jthR+3DxMhWqa7usNn+ctGPR6whhi\nQ4/bOv5ykqQpxbp5cnt4ltXTGiVbb/4mVaWwHDb+dLCOnjCpf+ovWO7uMWThvF2\nciDqHJMxqc8QB8J2oNcClHvKl7Ppx/7Oy1zpLhhX19AKixMORq7O6o0Q0Rms1d/W\nwyxpaD8U3qE0+alp5gqjxo7e+BGfxxUVxf3oABE9SiDkQyEjs1WHg1g7NwqC7e7v\nmzlh9PwRjhNIZSp/Vs1ehbRMcicD/vYxZP3vFcHvWzmb3g6XQjRPI6WYQj/l2Vcs\nN+lsjIT/cZimrua6da5/6pC7T3GDuNU=\n-----END PRIVATE KEY-----'
+  _NEXTAUTH_SECRET: 'production-nextauth-secret-key-change-this-in-production'
+  _NEXTAUTH_URL: 'https://headachemd-nextjs-sznczbmgha-uc.a.run.app'
+  _ENCRYPTION_KEY: '123456789012345678901234567890AW'
+  # EMR Integration Substitutions - UPDATED CREDENTIALS
+  _ECLINICALWORKS_CLIENT_ID: 'p1VE0PKTI8nKrS4xnBL0zkNAn41xd5tv52RTxeV2X6M'
+  _ECLINICALWORKS_CLIENT_SECRET: 'S8otD2UmerYQ4aCBpHZboByPLR-5cMKnKl4xlTqUHFYlGf3w-XVL0GZpRapWEkkV'
+  _ECLINICALWORKS_REDIRECT_URI: 'https://headachemd-nextjs-sznczbmgha-uc.a.run.app/api/emr/callback/eclinicalworks'
+  _ECLINICALWORKS_AUTH_URL: 'https://oauthserver.eclinicalworks.com/oauth/oauth2/authorize'
+  _ECLINICALWORKS_TOKEN_URL: 'https://oauthserver.eclinicalworks.com/oauth/oauth2/token'
+  _ECLINICALWORKS_FHIR_BASE_URL: 'https://fhir4.healow.com/fhir/r4/DJDIBD'
+  _ECLINICALWORKS_PRACTICE_CODE: 'DJDIBD'
+
+# Options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 100
+
+# Images to be pushed to Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/headachemd-nextjs:latest'
+  - 'gcr.io/$PROJECT_ID/headachemd-nextjs:${BUILD_ID}'

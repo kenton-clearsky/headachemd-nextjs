@@ -1,0 +1,226 @@
+{
+  "info": {
+    "name": "HeadacheMD - EMR Integration (Updated Credentials)",
+    "description": "Updated FHIR R4 API testing for eClinicalWorks Healow integration with correct credentials",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      {
+        "key": "tokenName",
+        "value": "headachemd-token",
+        "type": "string"
+      },
+      {
+        "key": "callbackUrl",
+        "value": "http://localhost:3000/api/emr/callback/eclinicalworks",
+        "type": "string"
+      },
+      {
+        "key": "authUrl",
+        "value": "https://oauthserver.eclinicalworks.com/oauth/oauth2/authorize?aud=https://fhir4.healow.com/fhir/r4/DJDIBD&practice_code=DJDIBD",
+        "type": "string"
+      },
+      {
+        "key": "accessTokenUrl",
+        "value": "https://oauthserver.eclinicalworks.com/oauth/oauth2/token?aud=https://fhir4.healow.com/fhir/r4/DJDIBD",
+        "type": "string"
+      },
+      {
+        "key": "clientId",
+        "value": "p1VE0PKTI8nKrS4xnBL0zkNAn41xd5tv52RTxeV2X6M",
+        "type": "string"
+      },
+      {
+        "key": "clientSecret",
+        "value": "S8otD2UmerYQ4aCBpHZboByPLR-5cMKnKl4xlTqUHFYlGf3w-XVL0GZpRapWEkkV",
+        "type": "string"
+      },
+      {
+        "key": "scope",
+        "value": "launch/patient openid profile offline_access patient/Patient.read",
+        "type": "string"
+      },
+      {
+        "key": "state",
+        "value": "headachemd-state-123",
+        "type": "string"
+      },
+      {
+        "key": "grant_type",
+        "value": "authorization_code",
+        "type": "string"
+      },
+      {
+        "key": "addTokenTo",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://fhir4.healow.com/fhir/r4/DJDIBD",
+      "type": "string"
+    },
+    {
+      "key": "local_api_url",
+      "value": "http://localhost:3000/api",
+      "type": "string"
+    },
+    {
+      "key": "practice_code",
+      "value": "DJDIBD",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. EMR Authentication",
+      "item": [
+        {
+          "name": "Get OAuth Authorization URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{local_api_url}}/emr/auth/eclinicalworks",
+              "host": ["{{local_api_url}}"],
+              "path": ["emr", "auth", "eclinicalworks"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Test Token Exchange",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "authorization_code",
+                  "type": "text"
+                },
+                {
+                  "key": "code",
+                  "value": "REPLACE_WITH_AUTH_CODE",
+                  "type": "text"
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "http://localhost:3000/api/emr/callback/eclinicalworks",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "p1VE0PKTI8nKrS4xnBL0zkNAn41xd5tv52RTxeV2X6M",
+                  "type": "text"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "S8otD2UmerYQ4aCBpHZboByPLR-5cMKnKl4xlTqUHFYlGf3w-XVL0GZpRapWEkkV",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "https://oauthserver.eclinicalworks.com/oauth/oauth2/token?aud=https://fhir4.healow.com/fhir/r4/DJDIBD",
+              "protocol": "https",
+              "host": ["oauthserver", "eclinicalworks", "com"],
+              "path": ["oauth", "oauth2", "token"],
+              "query": [
+                {
+                  "key": "aud",
+                  "value": "https://fhir4.healow.com/fhir/r4/DJDIBD"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. FHIR Patient API",
+      "item": [
+        {
+          "name": "Get Patient List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/Patient",
+              "host": ["{{base_url}}"],
+              "path": ["Patient"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Specific Patient",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/Patient/PATIENT_ID",
+              "host": ["{{base_url}}"],
+              "path": ["Patient", "PATIENT_ID"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Local API Testing",
+      "item": [
+        {
+          "name": "Test EMR Connection",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{local_api_url}}/emr/test",
+              "host": ["{{local_api_url}}"],
+              "path": ["emr", "test"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get EMR Patients",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{local_api_url}}/emr/patients",
+              "host": ["{{local_api_url}}"],
+              "path": ["emr", "patients"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

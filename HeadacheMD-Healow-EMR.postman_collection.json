@@ -1,0 +1,317 @@
+{
+  "info": {
+    "name": "HeadacheMD - Healow EMR Integration",
+    "description": "Complete FHIR R4 API testing for eClinicalWorks Healow integration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      {
+        "key": "tokenName",
+        "value": "temp-token",
+        "type": "string"
+      },
+      {
+        "key": "callbackUrl",
+        "value": "https://www.headachemd.org",
+        "type": "string"
+      },
+      {
+        "key": "authUrl",
+        "value": "https://oauthserver.eclinicalworks.com/oauth/oauth2/authorize?aud=https://fhir4.healow.com/fhir/r4/DJDIBD",
+        "type": "string"
+      },
+      {
+        "key": "accessTokenUrl",
+        "value": "https://oauthserver.eclinicalworks.com/oauth/oauth2/token?aud=https://fhir4.healow.com/fhir/r4/DJDIBD",
+        "type": "string"
+      },
+      {
+        "key": "clientId",
+        "value": "KmtVNTrliDQCC18Ru-QNwnPzj72of2lDndUXQBsdR6k",
+        "type": "string"
+      },
+      {
+        "key": "clientSecret",
+        "value": "u6vUKiO83CUFn3AtT-UFtx7p7ooESxY_UrUNI0yVTxmQINwGp9XElEVvOOD7kyPC",
+        "type": "string"
+      },
+      {
+        "key": "scope",
+        "value": "launch/patient patient/Patient.read",
+        "type": "string"
+      },
+      {
+        "key": "state",
+        "value": "123",
+        "type": "string"
+      },
+      {
+        "key": "grant_type",
+        "value": "authorization_code",
+        "type": "string"
+      },
+      {
+        "key": "addTokenTo",
+        "value": "header",
+        "type": "string"
+      },
+      {
+        "key": "challengeAlgorithm",
+        "value": "S256",
+        "type": "string"
+      },
+      {
+        "key": "clientAuthentication",
+        "value": "body",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://fhir4.healow.com/fhir/r4/DJDIBD",
+      "type": "string"
+    },
+    {
+      "key": "localApiUrl",
+      "value": "http://localhost:3001/api",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. FHIR Metadata (No Auth)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/fhir+json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/metadata",
+          "host": ["{{baseUrl}}"],
+          "path": ["metadata"]
+        },
+        "description": "Get FHIR server capabilities - no authentication required"
+      }
+    },
+    {
+      "name": "2. Patient Search (OAuth Required)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/fhir+json",
+            "type": "text"
+          }
+        ],
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "addTokenTo",
+              "value": "header",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/Patient",
+          "host": ["{{baseUrl}}"],
+          "path": ["Patient"],
+          "query": [
+            {
+              "key": "_count",
+              "value": "10",
+              "description": "Limit results to 10 patients"
+            }
+          ]
+        },
+        "description": "Search for patients - requires OAuth2 authentication"
+      }
+    },
+    {
+      "name": "3. Patient by ID (OAuth Required)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/fhir+json",
+            "type": "text"
+          }
+        ],
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "addTokenTo",
+              "value": "header",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/Patient/{{patientId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["Patient", "{{patientId}}"],
+          "variable": [
+            {
+              "key": "patientId",
+              "value": "123",
+              "description": "Replace with actual patient ID from search results"
+            }
+          ]
+        },
+        "description": "Get specific patient by ID - requires OAuth2 authentication"
+      }
+    },
+    {
+      "name": "4. Local EMR Patient API",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{localApiUrl}}/emr/patient?system=eclinicalworks&patientId=123",
+          "host": ["{{localApiUrl}}"],
+          "path": ["emr", "patient"],
+          "query": [
+            {
+              "key": "system",
+              "value": "eclinicalworks"
+            },
+            {
+              "key": "patientId",
+              "value": "123"
+            }
+          ]
+        },
+        "description": "Test local HeadacheMD EMR integration endpoint"
+      }
+    },
+    {
+      "name": "5. Local EMR Auth Endpoint",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{localApiUrl}}/emr/auth/eclinicalworks",
+          "host": ["{{localApiUrl}}"],
+          "path": ["emr", "auth", "eclinicalworks"]
+        },
+        "description": "Test local HeadacheMD EMR authentication endpoint"
+      }
+    },
+    {
+      "name": "6. Observation Search (OAuth Required)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/fhir+json",
+            "type": "text"
+          }
+        ],
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "addTokenTo",
+              "value": "header",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/Observation?patient={{patientId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["Observation"],
+          "query": [
+            {
+              "key": "patient",
+              "value": "{{patientId}}"
+            },
+            {
+              "key": "_count",
+              "value": "10"
+            }
+          ],
+          "variable": [
+            {
+              "key": "patientId",
+              "value": "123",
+              "description": "Patient ID from previous search"
+            }
+          ]
+        },
+        "description": "Get patient observations (vital signs, lab results, etc.)"
+      }
+    },
+    {
+      "name": "7. Condition Search (OAuth Required)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/fhir+json",
+            "type": "text"
+          }
+        ],
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            {
+              "key": "addTokenTo",
+              "value": "header",
+              "type": "string"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/Condition?patient={{patientId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["Condition"],
+          "query": [
+            {
+              "key": "patient",
+              "value": "{{patientId}}"
+            },
+            {
+              "key": "_count",
+              "value": "10"
+            }
+          ],
+          "variable": [
+            {
+              "key": "patientId",
+              "value": "123",
+              "description": "Patient ID from previous search"
+            }
+          ]
+        },
+        "description": "Get patient conditions (diagnoses, problems, etc.)"
+      }
+    }
+  ]
+}

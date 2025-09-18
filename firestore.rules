@@ -1,0 +1,202 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pages (public read; write open for dev only)
+    match /pages/{pageId} {
+      allow read: if true;
+      // WARNING: dev-only. Lock this down in production.
+      allow write: if true;
+      // For production:
+      // allow write: if request.auth != null
+      //   && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users can read/write/delete their own profile
+    match /users/{userId} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Per-user settings/statistics
+    match /userSettings/{userId} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+    }
+    match /userStatistics/{userId} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    //mobile -settings
+    match /mobile_user_settings/{userId} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // User analytics collection for real-time tracking
+    match /user_analytics/{analyticsId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Aggregated analytics data
+    match /analytics_aggregates/{aggregateId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'doctor']);
+    }
+
+    // Real-time analytics sessions
+    match /active_sessions/{sessionId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // User sessions for analytics tracking
+    match /user_sessions/{sessionId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Headache logs for patient tracking
+    match /headache_logs/{logId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Medication logs for patient tracking
+    match /medication_logs/{logId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Daily updates for patient tracking (both naming conventions)
+    match /dailyUpdates/{updateId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    match /daily_updates/{updateId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Legacy top-level logs (keep readable; block new writes to avoid drift)
+    match /logs/{logId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    // Deterministic per-day logs: user_logs/{userId}/days/{date}
+    match /user_logs/{userId} {
+      allow read, write: if false; // default deny on this level
+
+      match /days/{date} {
+        // One log per day per user
+        allow create, update, delete: if request.auth != null
+          && userId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid;
+        allow read: if request.auth != null && userId == request.auth.uid;
+
+        // Daily feelings subcollection: user_logs/{userId}/days/{date}/feelings/{feelingId}
+        match /feelings/{feelingId} {
+          // Create/Update by owner only; payload must include owner id
+          allow create, update: if request.auth != null
+            && request.auth.uid == userId
+            && request.resource.data.userId == request.auth.uid;
+
+          // Read/Delete by owner (no resource field requirement for legacy docs)
+          allow read, delete: if request.auth != null
+            && request.auth.uid == userId;
+        }
+      }
+    }
+
+    // Per-device push tokens
+    match /user_devices/{deviceId} {
+      // Owner can create/update their own device doc (must include userId == auth.uid)
+      allow create, update: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+
+      // Owner can read/delete their own device doc
+      allow read, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+    }
+    
+    // mobile settings
+    match /mobile_user_settings/{deviceId} {
+      // Owner can create/update their own device doc (must include userId == auth.uid)
+      allow create, update: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+
+      // Owner can read/delete their own device doc
+      allow read, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+    }
+    
+    // Legacy emotions (keep readable; block new writes if deprecating)
+    match /emotions/{emotionId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    // Deprecated user_emotions (read allowed for migration, block writes)
+    match /user_emotions/{emotionId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    // Medical collections (restrict writes to admin/doctor)
+    match /patients/{patientId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'doctor']);
+    }
+    match /appointments/{appointmentId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'doctor']);
+    }
+    match /treatments/{treatmentId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'doctor']);
+    }
+
+    // Audit logs (read for admin/doctor; any auth can write)
+    match /audit_logs/{logId} {
+      allow read: if request.auth != null
+        && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'doctor']);
+      allow write: if request.auth != null;
+    }
+
+    // Sessions (tied to userId on the doc)
+    match /sessions/{sessionId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // EMR sessions for integration testing
+    match /emr_sessions/{sessionId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Emotions collection - readable by all users, writable for development
+    match /emotions/{emotionId} {
+      allow read: if true; // Allow read access for development
+      allow write: if true; // Allow write access for development - TODO: restrict in production
+    }
+
+    // Headache regions collection - readable by all users, writable for development
+    match /headache_regions/{regionId} {
+      allow read: if true; // Allow read access for development
+      allow write: if true; // Allow write access for development - TODO: restrict in production
+    }
+
+    // Public docs
+    match /legals/{legalId} {
+      allow read: if true;
+      allow write, delete: if false;
+    }
+    match /physician_list/{docId} {
+      allow read: if true;
+      allow write, delete: if false;
+    }
+  }
+}

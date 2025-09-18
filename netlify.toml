@@ -1,0 +1,34 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_VERSION = "9"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions]
+  directory = ".netlify/functions"
+
+# Environment variables for production
+[context.production.environment]
+  NODE_ENV = "production"
+  NEXT_PUBLIC_APP_URL = "https://headachemd-emr-testing.netlify.app"
+
+# Environment variables for deploy previews
+[context.deploy-preview.environment]
+  NODE_ENV = "production"
+  NEXT_PUBLIC_APP_URL = "https://deploy-preview-$DEPLOY_ID--headachemd-emr-testing.netlify.app"
+
+# Environment variables for branch deploys
+[context.branch-deploy.environment]
+  NODE_ENV = "production"
